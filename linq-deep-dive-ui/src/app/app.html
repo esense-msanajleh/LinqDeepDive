@@ -1,0 +1,134 @@
+<main class="page">
+  @if (data(); as d) {
+    <section class="dashboard">
+      <aside class="left-nav">
+        <h2>LINQ Topics</h2>
+        <div class="nav-list">
+          @for (concept of d.concepts; track concept.id; let i = $index) {
+            <button class="nav-item" [class.active]="selectedConcept() === i" (click)="selectConcept(i)">
+              {{ concept.title }}
+            </button>
+          }
+        </div>
+        <button class="refresh-btn" (click)="runDemo()" [disabled]="loading()">{{ loading() ? 'Loading...' : 'Refresh Data' }}</button>
+      </aside>
+
+      <section class="center">
+        @let concept = d.concepts[selectedConcept()];
+
+        <section class="hero">
+          <p class="kicker">{{ concept.category }}</p>
+          <h1>{{ concept.title }}</h1>
+          <p class="desc">{{ concept.definition }}</p>
+        </section>
+
+        <section class="panel">
+          <h2>Overview</h2>
+          <p class="overview-text">{{ concept.overview }}</p>
+        </section>
+
+        @if (concept.termDefinitions.length > 0) {
+          <section class="panel">
+            <h2>Key Definitions</h2>
+            <div class="definitions-grid">
+              @for (term of concept.termDefinitions; track term.term) {
+                <article class="definition-card">
+                  <h3>{{ term.term }}</h3>
+                  <p>{{ term.definition }}</p>
+                </article>
+              }
+            </div>
+          </section>
+        }
+
+        @if (concept.id === 'common-mistakes-performance') {
+          @for (mistake of concept.mistakeExamples; track mistake.id) {
+            <section class="panel mistake-panel">
+              <h2>{{ mistake.title }}</h2>
+              <p class="mistake-desc">{{ mistake.description }}</p>
+              <pre class="bad">{{ mistake.cSharpCode }}</pre>
+              <button
+                class="action-btn run-btn"
+                [class.active]="activeMistakeId() === mistake.id"
+                [disabled]="actionLoading() && activeMistakeId() === mistake.id"
+                (click)="runMistakeExample(mistake.id)">
+                {{ actionLoading() && activeMistakeId() === mistake.id ? 'Running...' : 'Run Example' }}
+              </button>
+
+              @if (activeMistakeId() === mistake.id && actionResult(); as ar) {
+                <div class="results-grid">
+                  <article class="card">
+                    <h2>Output</h2>
+                    <p>{{ ar.summary }}</p>
+                    <p><strong>Execution:</strong> {{ ar.executionMilliseconds }} ms</p>
+                    <p><strong>Records:</strong> {{ ar.recordsReturned }}</p>
+                    <p><strong>Memory:</strong> {{ ar.estimatedMemoryKb | number:'1.0-2' }} KB</p>
+                    <p><strong>Performance Rating:</strong> {{ ar.performanceRating }}</p>
+                  </article>
+                  <article class="card full">
+                    <h2>Performance Dashboard</h2>
+                    <div class="compare-bars">
+                      @for (item of ar.comparisons; track item.label) {
+                        <div class="bar-row">
+                          <div class="bar-label">{{ item.label }} • {{ item.milliseconds }} ms • {{ item.records }} records</div>
+                          <div class="bar-track">
+                            <div class="bar-fill" [style.width.%]="barWidth(item.milliseconds, ar.comparisons)"></div>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  </article>
+                </div>
+              }
+            </section>
+          }
+        } @else {
+          <section class="panel">
+            <h2>Interactive Demo</h2>
+            <pre class="good">{{ concept.demoCode }}</pre>
+            <button
+              class="action-btn run-btn"
+              [disabled]="actionLoading()"
+              (click)="runExample()">
+              {{ actionLoading() ? 'Running...' : 'Run Example' }}
+            </button>
+
+            @if (actionResult(); as ar) {
+              <div class="results-grid">
+                <article class="card">
+                  <h2>Output</h2>
+                  <p>{{ ar.summary }}</p>
+                  <p><strong>Execution:</strong> {{ ar.executionMilliseconds }} ms</p>
+                  <p><strong>Records:</strong> {{ ar.recordsReturned }}</p>
+                  <p><strong>Memory:</strong> {{ ar.estimatedMemoryKb | number:'1.0-2' }} KB</p>
+                  <p><strong>Performance Rating:</strong> {{ ar.performanceRating }}</p>
+                </article>
+                <article class="card full">
+                  <h2>Performance Dashboard</h2>
+                  <div class="compare-bars">
+                    @for (item of ar.comparisons; track item.label) {
+                      <div class="bar-row">
+                        <div class="bar-label">{{ item.label }} • {{ item.milliseconds }} ms • {{ item.records }} records</div>
+                        <div class="bar-track">
+                          <div class="bar-fill" [style.width.%]="barWidth(item.milliseconds, ar.comparisons)"></div>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                </article>
+              </div>
+            }
+          </section>
+        }
+      </section>
+    </section>
+    @if (error()) {
+      <section class="panel"><p class="error">{{ error() }}</p></section>
+    }
+  } @else {
+    <section class="panel">
+      <h2>Waiting for data</h2>
+      <p>Start API project then click Refresh Data.</p>
+    </section>
+  }
+</main>
