@@ -64,6 +64,15 @@ export class App implements OnInit {
     this.executeAction(current.id, mistakeId);
   }
 
+  runTermExample(actionId: string): void {
+    const current = this.data()?.concepts[this.selectedConcept()];
+    if (!current || !actionId) {
+      return;
+    }
+    this.activeMistakeId.set(actionId);
+    this.executeAction(current.id, actionId);
+  }
+
   barWidth(ms: number, comparisons: ComparisonItem[]): number {
     const max = Math.max(...comparisons.map(c => c.milliseconds), 1);
     return ms === 0 ? 4 : Math.max(4, (100 * ms) / max);
@@ -128,12 +137,33 @@ type LinqConcept = {
   overview: string;
   termDefinitions: TermDefinition[];
   demoCode: string;
+  codeExamples: CodeExample[];
+  presentationSlides: PresentationSlide[];
   mistakeExamples: MistakeExample[];
+};
+
+type PresentationSlide = {
+  title: string;
+  intro: string;
+  exampleCode: string;
+  internalSteps: string[];
+  sqlOutput: string;
+  badExampleCode: string;
+  failureExplanation: string;
 };
 
 type TermDefinition = {
   term: string;
   definition: string;
+  exampleCode: string;
+  badExampleCode: string;
+  goodExampleCode: string;
+  actionId: string;
+};
+
+type CodeExample = {
+  title: string;
+  cSharpCode: string;
 };
 
 type MistakeExample = {
@@ -153,9 +183,6 @@ type ConceptActionResult = {
   conceptId: string;
   action: string;
   summary: string;
-  cSharpCode: string;
-  generatedSql: string;
-  executionFlow: string;
   recordsReturned: number;
   executionMilliseconds: number;
   estimatedMemoryKb: number;

@@ -13,6 +13,7 @@ public sealed class LinqDemoService(IAppDbContext dbContext)
         var deferredVsImmediate = await RunDeferredVsImmediate();
         var sqlTranslation = RunSqlTranslation();
         var filterProjection = await RunFilterProjectionChaining();
+        var filterProjectionDemo = await RunFilterProjectionDemo();
         var commonMistakes = await RunCommonMistakes();
 
         return new LinqDemoResultDto
@@ -21,6 +22,7 @@ public sealed class LinqDemoService(IAppDbContext dbContext)
             DeferredVsImmediate = deferredVsImmediate,
             SqlTranslation = sqlTranslation,
             FilterProjectionChaining = filterProjection,
+            FilterProjectionDemo = filterProjectionDemo,
             CommonMistakes = commonMistakes,
             Concepts = BuildConcepts()
         };
@@ -28,6 +30,87 @@ public sealed class LinqDemoService(IAppDbContext dbContext)
 
     private static List<LinqConceptDto> BuildConcepts() =>
     [
+        new()
+        {
+            Id = "linq-translation",
+            Title = "How LINQ translates to SQL (EF Core)",
+            Category = "EF Core",
+            Definition = "EF Core reads your LINQ as an expression tree and converts it to one SQL command — it does not run C# on each row.",
+            Overview = "When you chain LINQ on a DbSet, nothing hits the database until you call a terminal operator like ToListAsync(). EF Core walks the expression tree, maps properties to columns, and builds SQL. Not every C# expression can become SQL — that is when translation fails.",
+            TermDefinitions = [],
+            PresentationSlides =
+            [
+                new PresentationSlideDto
+                {
+                    Title = "What Happens Internally — One Example",
+                    Intro = "You write LINQ. No SQL yet. When you call ToListAsync(), EF Core walks the expression tree once and sends a single command to the database.",
+                    ExampleCode = """
+                        var users = context.Users
+                            .Where(u => u.Age > 18)
+                            .OrderBy(u => u.Name)
+                            .Select(u => new
+                            {
+                                u.Name,
+                                u.Age
+                            })
+                            .Take(5);
+
+                        // Terminal operator — SQL runs NOW
+                        var result = await users.ToListAsync();
+                        """,
+                    InternalSteps =
+                    [
+                        "context.Users → EF maps to the Users table",
+                        ".Where(u => u.Age > 18) → tree node: Age > 18 → SQL: WHERE [Age] > @p0",
+                        ".OrderBy(u => u.Name) → tree node: sort by Name → SQL: ORDER BY [Name]",
+                        ".Select(...) → tree node: pick Name, Age only → SQL: SELECT [Name], [Age]",
+                        ".Take(5) → tree node: limit rows → SQL: TOP(5) or LIMIT 5",
+                        "ToListAsync() → EF Core provider walks the full tree → one SQL command sent"
+                    ],
+                    SqlOutput = """
+                        SELECT TOP(5) [u].[Name], [u].[Age]
+                        FROM [Users] AS [u]
+                        WHERE [u].[Age] > @p0
+                        ORDER BY [u].[Name]
+                        """
+                },
+                new PresentationSlideDto
+                {
+                    Title = "Why Some Queries Cannot Be Translated",
+                    Intro = "EF Core only translates expressions it can map to SQL. It cannot call your C# methods or run arbitrary .NET logic on the server.",
+                    ExampleCode = """
+                        // WORKS — EF maps .Length to LEN() in SQL
+                        var users = context.Users
+                            .Where(u => u.Name.Length > 5);
+
+                        // SQL: WHERE LEN([Name]) > 5
+                        """,
+                    SqlOutput = """
+                        SELECT [u].[Id], [u].[Name], [u].[Age]
+                        FROM [Users] AS [u]
+                        WHERE LEN([u].[Name]) > 5
+                        """,
+                    BadExampleCode = """
+                        // FAILS — EF cannot call your C# method
+                        var users = context.Users
+                            .Where(u => IsValidName(u.Name));
+
+                        bool IsValidName(string name) =>
+                            name.Length > 5 && name.StartsWith("A");
+                        """,
+                    FailureExplanation = """
+                        Runtime error:
+                        InvalidOperationException: The LINQ expression 'u => IsValidName(u.Name)'
+                        could not be translated.
+
+                        Why? EF Core does not know how to turn IsValidName() into SQL.
+                        Fix: write the logic using translatable LINQ (Length, StartsWith, etc.)
+                        or load data first with ToList() — but that hurts performance.
+                        """
+                }
+            ],
+            DemoCode = string.Empty
+        },
         new()
         {
             Id = "ienumerable-vs-iqueryable",
@@ -77,63 +160,65 @@ public sealed class LinqDemoService(IAppDbContext dbContext)
                 new TermDefinitionDto
                 {
                     Term = "Deferred Execution",
-                    Definition = "Query operators like Where and Select only build an expression tree or iterator chain. No database call occurs until enumeration. You can add more operators and the entire pipeline translates to a single SQL statement."
+                    Definition = "Query operators like Where and Select only build an expression tree or iterator chain. No database call occurs until enumeration. You can add more operators and the entire pipeline translates to a single SQL statement.",
+                    ExampleCode = """
+                        // Deferred — no SQL yet
+                        var query = context.Orders
+                            .AsNoTracking()
+                            .Where(x => !x.IsPaid);
+                        """
                 },
                 new TermDefinitionDto
                 {
                     Term = "Immediate Execution",
-                    Definition = "Terminal operators force the query to execute now. ToListAsync() materializes results into a List<T>. CountAsync() runs a SELECT COUNT. FirstAsync() fetches one row. After materialization, further LINQ runs in memory on the IEnumerable."
+                    Definition = "Terminal operators force the query to execute now. ToListAsync() materializes results into a List<T>. CountAsync() runs a SELECT COUNT. FirstAsync() fetches one row. After materialization, further LINQ runs in memory on the IEnumerable.",
+                    ExampleCode = """
+                        // Immediate — SQL runs now
+                        var count = await query.CountAsync();
+                        var list  = await query.ToListAsync();
+                        """
                 },
                 new TermDefinitionDto
                 {
                     Term = "Terminal Operator",
-                    Definition = "An operator that triggers query execution: ToList, ToArray, ToDictionary, Count, Sum, Average, Min, Max, First, Single, Any, All. Once called, the query runs against the data source."
+                    Definition = "An operator that triggers query execution: ToList, ToArray, ToDictionary, Count, Sum, Average, Min, Max, First, Single, Any, All. Once called, the query runs against the data source.",
+                    ExampleCode = """
+                        // Terminal = Immediate
+                        await query.ToListAsync();
+                        await query.CountAsync();
+                        await query.FirstAsync();
+                        """
+                }
+            ],
+            CodeExamples =
+            [
+                new CodeExampleDto
+                {
+                    Title = "Deferred Execution Example",
+                    CSharpCode = """
+                        // Deferred — just building the query
+                        var query = context.Orders.AsNoTracking()
+                            .Where(x => !x.IsPaid)
+                            .OrderByDescending(x => x.Total);
+                        """
+                },
+                new CodeExampleDto
+                {
+                    Title = "Immediate Execution Example",
+                    CSharpCode = """
+                        // Immediate — each call hits the database
+                        var count = await query.CountAsync();
+                        var list  = await query.ToListAsync();
+                        """
                 }
             ],
             DemoCode = """
-                // Deferred: no SQL yet — just building the expression tree
+                // Deferred: no SQL yet
                 var query = context.Orders.AsNoTracking().Where(x => !x.IsPaid);
 
-                // Each terminal operator triggers a separate SQL execution
-                var count = await query.CountAsync();       // SELECT COUNT(*)
-                var list  = await query.ToListAsync();      // SELECT * (full materialization)
-                """
-        },
-        new()
-        {
-            Id = "linq-translation",
-            Title = "How LINQ translates to SQL (EF Core)",
-            Category = "EF Core",
-            Definition = "EF Core converts IQueryable LINQ expressions into parameterized SQL queries sent to the database.",
-            Overview = "When you chain LINQ operators on a DbSet, EF Core does not execute C# code on each row. Instead it walks the expression tree, maps entity properties to table columns, and generates a SQL statement. You can inspect the generated SQL with ToQueryString() before running the query. The shape of your LINQ directly affects the SQL — filters become WHERE clauses, Select becomes column lists, OrderBy becomes ORDER BY, and Take becomes TOP or LIMIT.",
-            TermDefinitions =
-            [
-                new TermDefinitionDto
-                {
-                    Term = "LINQ Provider",
-                    Definition = "The component that interprets IQueryable expression trees. EF Core's provider translates LINQ to SQL for relational databases. Not every C# expression can be translated — unsupported operations cause runtime exceptions or client evaluation."
-                },
-                new TermDefinitionDto
-                {
-                    Term = "ToQueryString()",
-                    Definition = "An EF Core method that returns the SQL query string without executing it. Useful for debugging, performance review, and verifying that filters are pushed to the server."
-                },
-                new TermDefinitionDto
-                {
-                    Term = "Client Evaluation",
-                    Definition = "When EF Core cannot translate part of a LINQ expression to SQL, it may pull data to the client and run the remaining logic in memory. This is almost always slower and should be avoided in production queries."
-                }
-            ],
-            DemoCode = """
-                var query = context.Orders.AsNoTracking()
-                    .Where(o => o.Total > 2500 && o.IsPaid)
-                    .OrderByDescending(o => o.Total)
-                    .Select(o => new { o.Id, o.Total, o.Customer.Name, o.Category })
-                    .Take(5);
-
-                // Inspect SQL without executing
-                var sql = query.ToQueryString();
-                var results = await query.ToListAsync();
+                // Immediate: each terminal operator runs SQL
+                var count = await query.CountAsync();
+                var list  = await query.ToListAsync();
                 """
         },
         new()
@@ -148,28 +233,64 @@ public sealed class LinqDemoService(IAppDbContext dbContext)
                 new TermDefinitionDto
                 {
                     Term = "Filtering (Where)",
-                    Definition = "Restricts rows before they leave the database. Translated to SQL WHERE. Multiple Where calls chain into AND conditions. Always filter on indexed columns when possible."
+                    Definition = "Restricts rows before they leave the database. Translated to SQL WHERE. Multiple Where calls chain into AND conditions. Always filter on indexed columns when possible.",
+                    ActionId = "filtering",
+                    BadExampleCode = """
+                        // BAD: load all, then filter in memory
+                        var all = await context.Orders.ToListAsync();
+                        var paid = all.Where(x => x.IsPaid).ToList();
+                        """,
+                    GoodExampleCode = """
+                        // GOOD: filter in SQL
+                        var paid = await context.Orders
+                            .Where(x => x.IsPaid)
+                            .ToListAsync();
+                        """
                 },
                 new TermDefinitionDto
                 {
                     Term = "Projection (Select)",
-                    Definition = "Maps each row to a new shape — a DTO, anonymous type, or subset of columns. Translated to SQL SELECT with only the requested columns, reducing network transfer and memory."
+                    Definition = "Maps each row to a new shape — a DTO, anonymous type, or subset of columns. Translated to SQL SELECT with only the requested columns, reducing network transfer and memory.",
+                    ActionId = "projection",
+                    BadExampleCode = """
+                        // BAD: load full entity
+                        var orders = await context.Orders
+                            .Where(x => x.IsPaid)
+                            .ToListAsync();
+                        """,
+                    GoodExampleCode = """
+                        // GOOD: select only needed columns
+                        var orders = await context.Orders
+                            .Where(x => x.IsPaid)
+                            .Select(x => new { x.Id, x.Total })
+                            .ToListAsync();
+                        """
                 },
                 new TermDefinitionDto
                 {
                     Term = "Chaining",
-                    Definition = "Linking multiple LINQ operators in sequence. EF Core composes the entire chain into one SQL query. Order matters: filter first, project second, paginate last."
+                    Definition = "Linking multiple LINQ operators in sequence. EF Core composes the entire chain into one SQL query. Order matters: filter first, project second, paginate last.",
+                    ActionId = "chaining",
+                    BadExampleCode = """
+                        // BAD: ToList in the middle breaks the chain
+                        var bad = context.Orders
+                            .Where(x => x.IsPaid)
+                            .ToList()
+                            .Select(x => x.Total)
+                            .Take(5)
+                            .ToList();
+                        """,
+                    GoodExampleCode = """
+                        // GOOD: one chain → one SQL query
+                        var good = await context.Orders
+                            .Where(x => x.IsPaid)
+                            .Select(x => x.Total)
+                            .Take(5)
+                            .ToListAsync();
+                        """
                 }
             ],
-            DemoCode = """
-                var rows = await context.Orders
-                    .AsNoTracking()
-                    .Where(x => x.IsPaid && x.Category == "Electronics")
-                    .OrderByDescending(x => x.Total)
-                    .Select(x => new { x.Id, Customer = x.Customer.Name, x.Total })
-                    .Take(8)
-                    .ToListAsync();
-                """
+            DemoCode = string.Empty
         },
         new()
         {
@@ -307,7 +428,7 @@ public sealed class LinqDemoService(IAppDbContext dbContext)
             "ienumerable-vs-iqueryable" => BuildIEnumerableVsIQueryableAction(data),
             "deferred-vs-immediate" => BuildDeferredAction(data),
             "linq-translation" => BuildSqlTranslationAction(data),
-            "filtering-projection-chaining" => BuildFilterProjectAction(data),
+            "filtering-projection-chaining" => BuildFilterProjectAction(data, action),
             "common-mistakes-performance" => BuildCommonMistakeAction(data, action),
             _ => BuildIEnumerableVsIQueryableAction(data)
         };
@@ -321,9 +442,6 @@ public sealed class LinqDemoService(IAppDbContext dbContext)
             ConceptId = "ienumerable-vs-iqueryable",
             Action = "run-real-example",
             Summary = "IQueryable pushes filtering to SQL Server while IEnumerable filters in memory.",
-            CSharpCode = string.Empty,
-            GeneratedSql = string.Empty,
-            ExecutionFlow = string.Empty,
             RecordsReturned = ie.IQueryableRowsLoaded,
             ExecutionMilliseconds = ie.IQueryableMilliseconds,
             EstimatedMemoryKb = Math.Round(ie.IEnumerableRowsLoaded * 0.35, 2),
@@ -344,9 +462,6 @@ public sealed class LinqDemoService(IAppDbContext dbContext)
             ConceptId = "deferred-vs-immediate",
             Action = "run-real-example",
             Summary = "Deferred queries execute at enumeration time; each terminal operator triggers a separate SQL execution.",
-            CSharpCode = string.Empty,
-            GeneratedSql = string.Empty,
-            ExecutionFlow = string.Empty,
             RecordsReturned = d.ImmediateListCount,
             ExecutionMilliseconds = 15,
             EstimatedMemoryKb = Math.Round(d.ImmediateListCount * 0.18, 2),
@@ -367,9 +482,6 @@ public sealed class LinqDemoService(IAppDbContext dbContext)
             ConceptId = "linq-translation",
             Action = "run-real-example",
             Summary = "EF Core translated the LINQ pipeline into a single parameterized SQL query with WHERE, ORDER BY, and TOP.",
-            CSharpCode = string.Empty,
-            GeneratedSql = string.Empty,
-            ExecutionFlow = string.Empty,
             RecordsReturned = 5,
             ExecutionMilliseconds = 3,
             EstimatedMemoryKb = 2.5,
@@ -382,26 +494,57 @@ public sealed class LinqDemoService(IAppDbContext dbContext)
         };
     }
 
-    private static ConceptActionResultDto BuildFilterProjectAction(LinqDemoResultDto data)
+    private static ConceptActionResultDto BuildFilterProjectAction(LinqDemoResultDto data, string action)
     {
-        var c = data.CommonMistakes;
-        return new ConceptActionResultDto
+        var d = data.FilterProjectionDemo;
+        return action switch
         {
-            ConceptId = "filtering-projection-chaining",
-            Action = "run-real-example",
-            Summary = "Filtering and projection in SQL returned only the rows and columns needed.",
-            CSharpCode = string.Empty,
-            GeneratedSql = string.Empty,
-            ExecutionFlow = string.Empty,
-            RecordsReturned = data.FilterProjectionChaining.Count,
-            ExecutionMilliseconds = c.SqlFilterMilliseconds,
-            EstimatedMemoryKb = Math.Round(data.FilterProjectionChaining.Count * 4.5, 2),
-            PerformanceRating = c.SqlFilterMilliseconds <= 80 ? "Excellent" : "Good",
-            Comparisons =
-            [
-                new ComparisonItemDto { Label = "Early ToList + filter", Milliseconds = c.EarlyToListMilliseconds, Records = 0 },
-                new ComparisonItemDto { Label = "SQL Filter + Select", Milliseconds = c.SqlFilterMilliseconds, Records = data.FilterProjectionChaining.Count }
-            ]
+            "filtering" => new ConceptActionResultDto
+            {
+                ConceptId = "filtering-projection-chaining",
+                Action = action,
+                Summary = "Bad loaded all rows then filtered in memory. Good pushed Where to SQL.",
+                RecordsReturned = d.FilteringGoodRecords,
+                ExecutionMilliseconds = d.FilteringGoodMilliseconds,
+                EstimatedMemoryKb = Math.Round(d.FilteringBadRecords * 0.35, 2),
+                PerformanceRating = d.FilteringGoodMilliseconds < d.FilteringBadMilliseconds ? "Excellent" : "Good",
+                Comparisons =
+                [
+                    new ComparisonItemDto { Label = "Bad: ToList then Where", Milliseconds = d.FilteringBadMilliseconds, Records = d.FilteringBadRecords },
+                    new ComparisonItemDto { Label = "Good: Where in SQL", Milliseconds = d.FilteringGoodMilliseconds, Records = d.FilteringGoodRecords }
+                ]
+            },
+            "projection" => new ConceptActionResultDto
+            {
+                ConceptId = "filtering-projection-chaining",
+                Action = action,
+                Summary = "Bad loaded full entities. Good selected only Id and Total.",
+                RecordsReturned = d.ProjectionRecords,
+                ExecutionMilliseconds = d.ProjectionGoodMilliseconds,
+                EstimatedMemoryKb = Math.Round(d.ProjectionRecords * 8.5, 2),
+                PerformanceRating = d.ProjectionGoodMilliseconds < d.ProjectionBadMilliseconds ? "Excellent" : "Good",
+                Comparisons =
+                [
+                    new ComparisonItemDto { Label = "Bad: full entity", Milliseconds = d.ProjectionBadMilliseconds, Records = d.ProjectionRecords },
+                    new ComparisonItemDto { Label = "Good: Select Id, Total", Milliseconds = d.ProjectionGoodMilliseconds, Records = d.ProjectionRecords }
+                ]
+            },
+            "chaining" => new ConceptActionResultDto
+            {
+                ConceptId = "filtering-projection-chaining",
+                Action = action,
+                Summary = "Bad broke the chain with ToList(). Good kept one SQL query.",
+                RecordsReturned = d.ChainingRecords,
+                ExecutionMilliseconds = d.ChainingGoodMilliseconds,
+                EstimatedMemoryKb = Math.Round(d.FilteringBadRecords * 0.2, 2),
+                PerformanceRating = d.ChainingGoodMilliseconds < d.ChainingBadMilliseconds ? "Excellent" : "Good",
+                Comparisons =
+                [
+                    new ComparisonItemDto { Label = "Bad: ToList mid-chain", Milliseconds = d.ChainingBadMilliseconds, Records = d.ChainingRecords },
+                    new ComparisonItemDto { Label = "Good: one SQL chain", Milliseconds = d.ChainingGoodMilliseconds, Records = d.ChainingRecords }
+                ]
+            },
+            _ => BuildFilterProjectAction(data, "filtering")
         };
     }
 
@@ -534,15 +677,80 @@ public sealed class LinqDemoService(IAppDbContext dbContext)
 
     private SqlTranslationDto RunSqlTranslation()
     {
-        var query = dbContext.Orders.AsNoTracking()
-            .Where(o => o.Total > 2500 && o.IsPaid)
-            .OrderByDescending(o => o.Total)
-            .Select(o => new { o.Id, o.Total, o.Customer.Name, o.Category })
-            .Take(5);
+        var workingQuery = dbContext.Customers
+            .Where(c => c.Name.Length > 5);
 
         return new SqlTranslationDto
         {
-            Sql = query.ToQueryString()
+            Sql = workingQuery.ToQueryString()
+        };
+    }
+
+    private async Task<FilterProjectionDemoDto> RunFilterProjectionDemo()
+    {
+        var sw = Stopwatch.StartNew();
+        var all = await dbContext.Orders.AsNoTracking().ToListAsync();
+        _ = all.Where(x => x.IsPaid).ToList();
+        sw.Stop();
+        var filteringBadMs = sw.ElapsedMilliseconds;
+        var filteringBadRecords = all.Count;
+
+        sw.Restart();
+        var paidGood = await dbContext.Orders.AsNoTracking()
+            .Where(x => x.IsPaid)
+            .Select(x => x.Id)
+            .ToListAsync();
+        sw.Stop();
+        var filteringGoodMs = sw.ElapsedMilliseconds;
+
+        sw.Restart();
+        var fullEntities = await dbContext.Orders.AsNoTracking()
+            .Where(x => x.IsPaid)
+            .Take(200)
+            .ToListAsync();
+        sw.Stop();
+        var projectionBadMs = sw.ElapsedMilliseconds;
+        _ = fullEntities.Count;
+
+        sw.Restart();
+        var projected = await dbContext.Orders.AsNoTracking()
+            .Where(x => x.IsPaid)
+            .Select(x => new { x.Id, x.Total })
+            .Take(200)
+            .ToListAsync();
+        sw.Stop();
+        var projectionGoodMs = sw.ElapsedMilliseconds;
+
+        sw.Restart();
+        _ = dbContext.Orders.AsNoTracking()
+            .Where(x => x.IsPaid)
+            .AsEnumerable()
+            .Select(x => x.Total)
+            .Take(5)
+            .ToList();
+        sw.Stop();
+        var chainingBadMs = sw.ElapsedMilliseconds;
+
+        sw.Restart();
+        var chainingGood = await dbContext.Orders.AsNoTracking()
+            .Where(x => x.IsPaid)
+            .Select(x => x.Total)
+            .Take(5)
+            .ToListAsync();
+        sw.Stop();
+
+        return new FilterProjectionDemoDto
+        {
+            FilteringBadMilliseconds = filteringBadMs,
+            FilteringGoodMilliseconds = filteringGoodMs,
+            FilteringBadRecords = filteringBadRecords,
+            FilteringGoodRecords = paidGood.Count,
+            ProjectionBadMilliseconds = projectionBadMs,
+            ProjectionGoodMilliseconds = projectionGoodMs,
+            ProjectionRecords = projected.Count,
+            ChainingBadMilliseconds = chainingBadMs,
+            ChainingGoodMilliseconds = sw.ElapsedMilliseconds,
+            ChainingRecords = chainingGood.Count
         };
     }
 

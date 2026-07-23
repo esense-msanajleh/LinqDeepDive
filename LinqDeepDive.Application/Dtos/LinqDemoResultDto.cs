@@ -7,6 +7,7 @@ public sealed class LinqDemoResultDto
     public DeferredVsImmediateDto DeferredVsImmediate { get; set; } = new();
     public SqlTranslationDto SqlTranslation { get; set; } = new();
     public List<OrderViewDto> FilterProjectionChaining { get; set; } = [];
+    public FilterProjectionDemoDto FilterProjectionDemo { get; set; } = new();
     public CommonMistakesDto CommonMistakes { get; set; } = new();
 }
 
@@ -46,10 +47,45 @@ public sealed class CommonMistakesDto
     public long NoTrackingMilliseconds { get; set; }
 }
 
+public sealed class FilterProjectionDemoDto
+{
+    public long FilteringBadMilliseconds { get; set; }
+    public long FilteringGoodMilliseconds { get; set; }
+    public int FilteringBadRecords { get; set; }
+    public int FilteringGoodRecords { get; set; }
+    public long ProjectionBadMilliseconds { get; set; }
+    public long ProjectionGoodMilliseconds { get; set; }
+    public int ProjectionRecords { get; set; }
+    public long ChainingBadMilliseconds { get; set; }
+    public long ChainingGoodMilliseconds { get; set; }
+    public int ChainingRecords { get; set; }
+}
+
 public sealed class TermDefinitionDto
 {
     public string Term { get; set; } = string.Empty;
     public string Definition { get; set; } = string.Empty;
+    public string ExampleCode { get; set; } = string.Empty;
+    public string BadExampleCode { get; set; } = string.Empty;
+    public string GoodExampleCode { get; set; } = string.Empty;
+    public string ActionId { get; set; } = string.Empty;
+}
+
+public sealed class CodeExampleDto
+{
+    public string Title { get; set; } = string.Empty;
+    public string CSharpCode { get; set; } = string.Empty;
+}
+
+public sealed class PresentationSlideDto
+{
+    public string Title { get; set; } = string.Empty;
+    public string Intro { get; set; } = string.Empty;
+    public string ExampleCode { get; set; } = string.Empty;
+    public List<string> InternalSteps { get; set; } = [];
+    public string SqlOutput { get; set; } = string.Empty;
+    public string BadExampleCode { get; set; } = string.Empty;
+    public string FailureExplanation { get; set; } = string.Empty;
 }
 
 public sealed class MistakeExampleDto
@@ -69,6 +105,8 @@ public sealed class LinqConceptDto
     public string Overview { get; set; } = string.Empty;
     public List<TermDefinitionDto> TermDefinitions { get; set; } = [];
     public string DemoCode { get; set; } = string.Empty;
+    public List<CodeExampleDto> CodeExamples { get; set; } = [];
+    public List<PresentationSlideDto> PresentationSlides { get; set; } = [];
     public List<MistakeExampleDto> MistakeExamples { get; set; } = [];
 }
 
@@ -77,9 +115,6 @@ public sealed class ConceptActionResultDto
     public string ConceptId { get; set; } = string.Empty;
     public string Action { get; set; } = string.Empty;
     public string Summary { get; set; } = string.Empty;
-    public string CSharpCode { get; set; } = string.Empty;
-    public string GeneratedSql { get; set; } = string.Empty;
-    public string ExecutionFlow { get; set; } = string.Empty;
     public int RecordsReturned { get; set; }
     public long ExecutionMilliseconds { get; set; }
     public double EstimatedMemoryKb { get; set; }

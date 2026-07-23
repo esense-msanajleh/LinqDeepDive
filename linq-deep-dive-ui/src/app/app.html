@@ -27,14 +27,142 @@
           <p class="overview-text">{{ concept.overview }}</p>
         </section>
 
+        @if (concept.presentationSlides.length > 0) {
+          @for (slide of concept.presentationSlides; track slide.title) {
+            <section class="panel presentation-slide">
+              <h2>{{ slide.title }}</h2>
+              <p class="slide-intro">{{ slide.intro }}</p>
+
+              @if (slide.exampleCode) {
+                <pre class="good">{{ slide.exampleCode }}</pre>
+              }
+
+              @if (slide.internalSteps.length > 0) {
+                <h3 class="slide-subtitle">Expression Tree</h3>
+                <div class="expression-tree" aria-label="LINQ expression tree diagram">
+                  <div class="tree-node tree-terminal">
+                    <span class="tree-label">ToListAsync()</span>
+                    <span class="tree-note">terminal — triggers SQL</span>
+                  </div>
+                  <div class="tree-line"></div>
+                  <div class="tree-node tree-op">
+                    <span class="tree-label">Take(5)</span>
+                    <span class="tree-map">→ TOP(5)</span>
+                  </div>
+                  <div class="tree-line"></div>
+                  <div class="tree-node tree-op">
+                    <span class="tree-label">Select(u => new &#123; u.Name, u.Age &#125;)</span>
+                    <span class="tree-map">→ SELECT [Name], [Age]</span>
+                  </div>
+                  <div class="tree-line"></div>
+                  <div class="tree-node tree-op">
+                    <span class="tree-label">OrderBy(u => u.Name)</span>
+                    <span class="tree-map">→ ORDER BY [Name]</span>
+                  </div>
+                  <div class="tree-line"></div>
+                  <div class="tree-node tree-op tree-where">
+                    <span class="tree-label">Where(u => u.Age > 18)</span>
+                    <span class="tree-map">→ WHERE [Age] > @p0</span>
+                    <div class="tree-lambda">
+                      <span class="lambda-title">Lambda body (inside Where):</span>
+                      <div class="lambda-tree">
+                        <div class="lambda-node">&gt; GreaterThan</div>
+                        <div class="tree-line tree-line-short"></div>
+                        <div class="lambda-branch">
+                          <div class="lambda-leaf">u.Age</div>
+                          <div class="lambda-leaf">18</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="tree-line"></div>
+                  <div class="tree-node tree-root">
+                    <span class="tree-label">context.Users</span>
+                    <span class="tree-note">DbSet&lt;User&gt; → Users table</span>
+                  </div>
+                </div>
+              }
+
+              @if (slide.internalSteps.length > 0) {
+                <h3 class="slide-subtitle">What EF Core does internally</h3>
+                <ol class="internal-steps">
+                  @for (step of slide.internalSteps; track step) {
+                    <li>{{ step }}</li>
+                  }
+                </ol>
+              }
+
+              @if (slide.sqlOutput) {
+                <h3 class="slide-subtitle">Generated SQL</h3>
+                <pre class="sql-output">{{ slide.sqlOutput }}</pre>
+              }
+
+              @if (slide.badExampleCode) {
+                <h3 class="slide-subtitle">What fails</h3>
+                <pre class="bad">{{ slide.badExampleCode }}</pre>
+              }
+
+              @if (slide.failureExplanation) {
+                <pre class="failure-output">{{ slide.failureExplanation }}</pre>
+              }
+            </section>
+          }
+        }
+
         @if (concept.termDefinitions.length > 0) {
           <section class="panel">
             <h2>Key Definitions</h2>
-            <div class="definitions-grid">
+            <div class="definitions-grid" [class.definitions-stack]="concept.id === 'filtering-projection-chaining'">
               @for (term of concept.termDefinitions; track term.term) {
                 <article class="definition-card">
                   <h3>{{ term.term }}</h3>
                   <p>{{ term.definition }}</p>
+                  @if (term.exampleCode) {
+                    <pre class="definition-example">{{ term.exampleCode }}</pre>
+                  }
+                  @if (term.badExampleCode) {
+                    <p class="example-label bad-label">Bad</p>
+                    <pre class="bad">{{ term.badExampleCode }}</pre>
+                  }
+                  @if (term.goodExampleCode) {
+                    <p class="example-label good-label">Good</p>
+                    <pre class="good">{{ term.goodExampleCode }}</pre>
+                  }
+                  @if (term.actionId) {
+                    <button
+                      class="action-btn run-btn"
+                      [class.active]="activeMistakeId() === term.actionId"
+                      [disabled]="actionLoading() && activeMistakeId() === term.actionId"
+                      (click)="runTermExample(term.actionId)">
+                      {{ actionLoading() && activeMistakeId() === term.actionId ? 'Running...' : 'Run Example' }}
+                    </button>
+
+                    @if (activeMistakeId() === term.actionId && actionResult(); as ar) {
+                      <div class="results-grid">
+                        <article class="card">
+                          <h2>Output</h2>
+                          <p>{{ ar.summary }}</p>
+                          <p><strong>Execution:</strong> {{ ar.executionMilliseconds }} ms</p>
+                          <p><strong>Records:</strong> {{ ar.recordsReturned }}</p>
+                          <p><strong>Memory:</strong> {{ ar.estimatedMemoryKb | number:'1.0-2' }} KB</p>
+                          <p><strong>Performance Rating:</strong> {{ ar.performanceRating }}</p>
+                        </article>
+                        <article class="card full">
+                          <h2>Performance Dashboard</h2>
+                          <div class="compare-bars">
+                            @for (item of ar.comparisons; track item.label) {
+                              <div class="bar-row">
+                                <div class="bar-label">{{ item.label }} • {{ item.milliseconds }} ms • {{ item.records }} records</div>
+                                <div class="bar-track">
+                                  <div class="bar-fill" [style.width.%]="barWidth(item.milliseconds, ar.comparisons)"></div>
+                                </div>
+                              </div>
+                            }
+                          </div>
+                        </article>
+                      </div>
+                    }
+                  }
                 </article>
               }
             </div>
@@ -83,42 +211,53 @@
             </section>
           }
         } @else {
-          <section class="panel">
-            <h2>Interactive Demo</h2>
-            <pre class="good">{{ concept.demoCode }}</pre>
-            <button
-              class="action-btn run-btn"
-              [disabled]="actionLoading()"
-              (click)="runExample()">
-              {{ actionLoading() ? 'Running...' : 'Run Example' }}
-            </button>
-
-            @if (actionResult(); as ar) {
-              <div class="results-grid">
-                <article class="card">
-                  <h2>Output</h2>
-                  <p>{{ ar.summary }}</p>
-                  <p><strong>Execution:</strong> {{ ar.executionMilliseconds }} ms</p>
-                  <p><strong>Records:</strong> {{ ar.recordsReturned }}</p>
-                  <p><strong>Memory:</strong> {{ ar.estimatedMemoryKb | number:'1.0-2' }} KB</p>
-                  <p><strong>Performance Rating:</strong> {{ ar.performanceRating }}</p>
-                </article>
-                <article class="card full">
-                  <h2>Performance Dashboard</h2>
-                  <div class="compare-bars">
-                    @for (item of ar.comparisons; track item.label) {
-                      <div class="bar-row">
-                        <div class="bar-label">{{ item.label }} • {{ item.milliseconds }} ms • {{ item.records }} records</div>
-                        <div class="bar-track">
-                          <div class="bar-fill" [style.width.%]="barWidth(item.milliseconds, ar.comparisons)"></div>
-                        </div>
-                      </div>
-                    }
-                  </div>
-                </article>
-              </div>
+          @if (concept.codeExamples.length > 0) {
+            @for (example of concept.codeExamples; track example.title) {
+              <section class="panel execution-example-panel">
+                <h2>{{ example.title }}</h2>
+                <pre [class]="example.title.toLowerCase().includes('deferred') ? 'deferred' : 'immediate'">{{ example.cSharpCode }}</pre>
+              </section>
             }
-          </section>
+          }
+
+          @if (concept.demoCode) {
+            <section class="panel">
+              <h2>Interactive Demo</h2>
+              <pre class="good">{{ concept.demoCode }}</pre>
+              <button
+                class="action-btn run-btn"
+                [disabled]="actionLoading()"
+                (click)="runExample()">
+                {{ actionLoading() ? 'Running...' : 'Run Example' }}
+              </button>
+
+              @if (actionResult(); as ar) {
+                <div class="results-grid">
+                  <article class="card">
+                    <h2>Output</h2>
+                    <p>{{ ar.summary }}</p>
+                    <p><strong>Execution:</strong> {{ ar.executionMilliseconds }} ms</p>
+                    <p><strong>Records:</strong> {{ ar.recordsReturned }}</p>
+                    <p><strong>Memory:</strong> {{ ar.estimatedMemoryKb | number:'1.0-2' }} KB</p>
+                    <p><strong>Performance Rating:</strong> {{ ar.performanceRating }}</p>
+                  </article>
+                  <article class="card full">
+                    <h2>Performance Dashboard</h2>
+                    <div class="compare-bars">
+                      @for (item of ar.comparisons; track item.label) {
+                        <div class="bar-row">
+                          <div class="bar-label">{{ item.label }} • {{ item.milliseconds }} ms • {{ item.records }} records</div>
+                          <div class="bar-track">
+                            <div class="bar-fill" [style.width.%]="barWidth(item.milliseconds, ar.comparisons)"></div>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  </article>
+                </div>
+              }
+            </section>
+          }
         }
       </section>
     </section>
